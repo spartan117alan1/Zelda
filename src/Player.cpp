@@ -11,6 +11,11 @@ void Player::setPosition(const sf::Vector2f& pos) {
     sprite.setPosition(pos);
 }
 
+void Player::move(float dx, float dy) {
+    shape.move(dx, dy);
+    sprite.setPosition(shape.getPosition());
+}
+
 Player::Player(float x, float y) {
     shape.setSize({32.f,32.f});
     shape.setFillColor(sf::Color::Green);
@@ -22,18 +27,13 @@ Player::Player(float x, float y) {
     const std::string texPath = "assets/textures/link.png";
     
     sf::Image image;
-    // 1. Cargamos primero a sf::Image para poder manipular los píxeles
     if (!image.loadFromFile(texPath)) {
         std::cerr << "Error: no se pudo cargar " << texPath << "\n";
         textureLoaded = false;
     } else {
-        // 2. Borramos el gris (Alpha por defecto es 255, que equivale al 100% del editor)
         image.createMaskFromColor(sf::Color(116, 116, 116)); 
-        
-        // 3. Pasamos la imagen limpia a la memoria de la tarjeta gráfica (Textura)
         texture.loadFromImage(image);
         textureLoaded = true;
-        
         auto sz = texture.getSize();
         std::cout << "Player texture loaded. size: " << sz.x << "x" << sz.y << "\n";
     }
@@ -45,29 +45,20 @@ Player::Player(float x, float y) {
 
     spriteWidth = 16;
     spriteHeight = 16;
-
     animationTimer = 0.f;
     animationSpeed = 0.15f;
     moving = false;
-
     currentFrame = 0;
 
-    
-
-    // TEXTURA INICIAL (frame abajo idle)
-     // Default initial texture rectangle (will validate in update)
     if (textureLoaded) {
-        // safe default: if provided coords are out-of-range update() will log
-        sprite.setTextureRect(sf::IntRect(1, 11, spriteWidth, spriteHeight));
+        sprite.setTextureRect(sf::IntRect(1, 10, spriteWidth, spriteHeight));
     }
     sprite.setPosition(shape.getPosition());
 
     // --- Configuración del Sprite de la Espada ---
     swordSprite.setTexture(texture);
     swordSprite.setScale(2.f, 2.f);
-    // Recorte en X 36, Y 154, con ancho 8 y alto 16
     swordSprite.setTextureRect(sf::IntRect(36, 154, 8, 16)); 
-    // Centramos el pivote (la mitad de 8x16)
     swordSprite.setOrigin(4.f, 8.f);
 
     // Knockback
@@ -80,7 +71,6 @@ Player::Player(float x, float y) {
     swordTimer = swordCooldown;
     attacking = false;
     swordHitbox.setSize({20.f, 10.f});
-    //swordHitbox.setFillColor(sf::Color::Yellow);
 
     direction = sf::Vector2f(0.f, -1.f);
     lastDirection = direction;
@@ -97,12 +87,13 @@ Player::Player(float x, float y) {
 
     normalColor = shape.getFillColor();
 
-    // Debug current working directory (useful when texture not found)
     try {
         std::cout << "CWD: " << std::filesystem::current_path() << "\n";
     } catch (...) {}
-
-
+    
+    // Nace sin armas equipadas
+    itemA = EquipItem::NONE;
+    itemB = EquipItem::NONE;
 }
 
 void Player::handleInput(float deltaTime) {
@@ -110,20 +101,16 @@ void Player::handleInput(float deltaTime) {
     moving = false;
 
     if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left))  {
-        newDir = {-1.f, 0.f};
-        moving = true;
+        newDir = {-1.f, 0.f}; moving = true;
     }
     else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)){
-        newDir = {1.f, 0.f};
-        moving = true;
+        newDir = {1.f, 0.f}; moving = true;
     }
     else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) {
-        newDir = {0.f, -1.f};
-        moving = true;
+        newDir = {0.f, -1.f}; moving = true;
     }
     else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) {
-        newDir = {0.f, 1.f};
-        moving = true;
+        newDir = {0.f, 1.f}; moving = true;
     }
 
     direction = newDir;
@@ -138,40 +125,24 @@ void Player::update(float deltaTime, const sf::RenderWindow& window,
                     const std::vector<Hud>& hud,
                     std::vector<Enemy>& enemies) {
 
-                       sprite.setTexture(texture);
-                       swordSprite.setTexture(texture);
+    sprite.setTexture(texture);
+    swordSprite.setTexture(texture);
 
-    //------------------------------------------
-    // ANIMACIÓN DEL SPRITE 16x16 (frames exactos)
-    //------------------------------------------
     const int DOWN_FRAMES[2]  = {1, 18};
     const int LEFT_FRAMES[2]  = {35, 52};
     const int UP_FRAMES[2]    = {69, 86};
     const int FRAME_Y = 11;
 
-    // ------------------------------------------
-    // ANIMACIÓN DEL SPRITE Y DIRECCIÓN
-    // ------------------------------------------
     animationTimer += deltaTime;
-
-    // Determinamos hacia dónde debe mirar (si no se mueve, usa la última dirección)
     sf::Vector2f dirToFace = moving ? direction : lastDirection;
     int frameA = DOWN_FRAMES[0], frameB = DOWN_FRAMES[1];
     bool mirrored = false;
 
-    if (dirToFace.y > 0) { // Abajo
-        frameA = DOWN_FRAMES[0]; frameB = DOWN_FRAMES[1];
-    } else if (dirToFace.y < 0) { // Arriba
-        frameA = UP_FRAMES[0]; frameB = UP_FRAMES[1];
-    } else if (dirToFace.x < 0) { // Izquierda
-        frameA = LEFT_FRAMES[0]; frameB = LEFT_FRAMES[1];
-        mirrored = true;  // <-- AHORA SÍ: Espejo para voltear a la izquierda
-    } else if (dirToFace.x > 0) { // Derecha
-        frameA = LEFT_FRAMES[0]; frameB = LEFT_FRAMES[1];
-        mirrored = false; // <-- Normal para mirar a la derecha
-    }
+    if (dirToFace.y > 0) { frameA = DOWN_FRAMES[0]; frameB = DOWN_FRAMES[1]; } 
+    else if (dirToFace.y < 0) { frameA = UP_FRAMES[0]; frameB = UP_FRAMES[1]; } 
+    else if (dirToFace.x < 0) { frameA = LEFT_FRAMES[0]; frameB = LEFT_FRAMES[1]; mirrored = true; } 
+    else if (dirToFace.x > 0) { frameA = LEFT_FRAMES[0]; frameB = LEFT_FRAMES[1]; mirrored = false; }
 
-    // Aplicamos el espejo. Al tener el origen centrado en 8,8 ya no brincará.
     sprite.setScale(mirrored ? -2.f : 2.f, 2.f);
 
     if (moving) {
@@ -180,23 +151,16 @@ void Player::update(float deltaTime, const sf::RenderWindow& window,
             animationTimer = 0.f;
         }
     } else {
-        currentFrame = 0; // Forzamos el frame base (quieto) en la dirección actual
+        currentFrame = 0; 
     }
 
     int frameX = (currentFrame == 0 ? frameA : frameB);
-
-    // Centramos el pivote del sprite (8, 8). 
-    // Al escalar en negativo (-2.f) se volteará sobre su propio centro sin brincar.
     sprite.setOrigin(spriteWidth / 2.f, spriteHeight / 2.f);
 
-        // Validate texture bounds before applying the rectangle
     if (textureLoaded) {
         auto ts = texture.getSize();
         if (frameX < 0 || FRAME_Y < 0 || frameX + spriteWidth > (int)ts.x || FRAME_Y + spriteHeight > (int)ts.y) {
-            std::cerr << "Warning: requested sprite rect out of texture bounds: "
-                      << "x=" << frameX << " y=" << FRAME_Y << " w=" << spriteWidth << " h=" << spriteHeight
-                      << " texture=" << ts.x << "x" << ts.y << "\n";
-            // fallback: draw the hitbox (shape) instead of the sprite to avoid white quad
+            std::cerr << "Warning: requested sprite rect out of texture bounds\n";
             textureLoaded = false;
         } else {
             sprite.setTextureRect(sf::IntRect(frameX, FRAME_Y, spriteWidth, spriteHeight));
@@ -204,52 +168,124 @@ void Player::update(float deltaTime, const sf::RenderWindow& window,
     }
 
     //------------------------------------------
-    // MOVIMIENTO / FÍSICA
+    // MOVIMIENTO / FÍSICA (NUEVO SISTEMA DE NÚCLEO)
     //------------------------------------------
 
-    // Knockback
     if (knockbackTimer > 0.f) {
-        shape.move(knockback * deltaTime);
+        sf::Vector2f kbStep = knockback * deltaTime;
+
+        // Knockback en X
+        shape.move(kbStep.x, 0.f);
+        sf::FloatRect pBounds = shape.getGlobalBounds();
+        sf::FloatRect coreBox = pBounds;
+        coreBox.left += 8.f; coreBox.width -= 16.f; // Hitbox central de 8x8
+        coreBox.top += 8.f; coreBox.height -= 16.f;
+
+        bool onPlatformX = false;
+        for (const auto& obs : obstacles) {
+            if (obs.getType() == ObstacleType::PLATFORM && coreBox.intersects(obs.getBounds())) {
+                onPlatformX = true; break;
+            }
+        }
+        for (const auto& obs : obstacles) {
+            if (obs.isSolid() && pBounds.intersects(obs.getBounds())) {
+                shape.move(-kbStep.x, 0.f); break; // Muros usan el cuerpo entero
+            }
+            if (obs.getIsWater() && !onPlatformX && coreBox.intersects(obs.getBounds())) {
+                shape.move(-kbStep.x, 0.f); break; // Agua usa el núcleo
+            }
+        }
+        for (const auto& h : hud) {
+            if (pBounds.intersects(h.getBounds())) { shape.move(-kbStep.x, 0.f); break; }
+        }
+
+        // Knockback en Y
+        shape.move(0.f, kbStep.y);
+        pBounds = shape.getGlobalBounds();
+        coreBox = pBounds;
+        coreBox.left += 8.f; coreBox.width -= 16.f;
+        coreBox.top += 8.f; coreBox.height -= 16.f;
+
+        bool onPlatformY = false;
+        for (const auto& obs : obstacles) {
+            if (obs.getType() == ObstacleType::PLATFORM && coreBox.intersects(obs.getBounds())) {
+                onPlatformY = true; break;
+            }
+        }
+        for (const auto& obs : obstacles) {
+            if (obs.isSolid() && pBounds.intersects(obs.getBounds())) {
+                shape.move(0.f, -kbStep.y); break; 
+            }
+            if (obs.getIsWater() && !onPlatformY && coreBox.intersects(obs.getBounds())) {
+                shape.move(0.f, -kbStep.y); break; 
+            }
+        }
+        for (const auto& h : hud) {
+            if (pBounds.intersects(h.getBounds())) { shape.move(0.f, -kbStep.y); break; }
+        }
+
         knockbackTimer -= deltaTime;
         sprite.setPosition(shape.getPosition());
     } else {
-
         sf::Vector2f movement = direction * speed * deltaTime;
 
         // Move X
         if (movement.x != 0.f) {
             shape.move(movement.x, 0);
+            sf::FloatRect pBounds = shape.getGlobalBounds();
+            sf::FloatRect coreBox = pBounds;
+            coreBox.left += 8.f; coreBox.width -= 16.f;
+            coreBox.top += 8.f; coreBox.height -= 16.f;
+            
+            bool onPlatform = false;
             for (const auto& obs : obstacles) {
-                if (shape.getGlobalBounds().intersects(obs.getBounds())) {
-                    shape.move(-movement.x, 0);
-                    break;
+                if (obs.getType() == ObstacleType::PLATFORM && coreBox.intersects(obs.getBounds())) {
+                    onPlatform = true; break;
                 }
             }
-            for (const auto& h : hud) {
-                if (shape.getGlobalBounds().intersects(h.getBounds())) {
-                    shape.move(0, -movement.x);
-                    break;
+
+            for (const auto& obs : obstacles) {
+                if (obs.isSolid() && pBounds.intersects(obs.getBounds())) {
+                    shape.move(-movement.x, 0); break;
                 }
+                if (obs.getIsWater() && !onPlatform && coreBox.intersects(obs.getBounds())) {
+                    shape.move(-movement.x, 0); break;
+                }
+            }
+            
+            for (const auto& h : hud) {
+                if (pBounds.intersects(h.getBounds())) { shape.move(-movement.x, 0); break; }
             }
         }
 
         // Move Y
         if (movement.y != 0.f) {
             shape.move(0, movement.y);
+            sf::FloatRect pBounds = shape.getGlobalBounds();
+            sf::FloatRect coreBox = pBounds;
+            coreBox.left += 8.f; coreBox.width -= 16.f;
+            coreBox.top += 8.f; coreBox.height -= 16.f;
+            
+            bool onPlatform = false;
             for (const auto& obs : obstacles) {
-                if (shape.getGlobalBounds().intersects(obs.getBounds())) {
-                    shape.move(0, -movement.y);
-                    break;
+                if (obs.getType() == ObstacleType::PLATFORM && coreBox.intersects(obs.getBounds())) {
+                    onPlatform = true; break;
                 }
             }
-            for (const auto& h : hud) {
-                if (shape.getGlobalBounds().intersects(h.getBounds())) {
-                    shape.move(0, -movement.y);
-                    break;
+
+            for (const auto& obs : obstacles) {
+                if (obs.isSolid() && pBounds.intersects(obs.getBounds())) {
+                    shape.move(0, -movement.y); break;
                 }
+                if (obs.getIsWater() && !onPlatform && coreBox.intersects(obs.getBounds())) {
+                    shape.move(0, -movement.y); break;
+                }
+            }
+            
+            for (const auto& h : hud) {
+                if (pBounds.intersects(h.getBounds())) { shape.move(0, -movement.y); break; }
             }
         }
-
     }
 
     sprite.setPosition(shape.getPosition());
@@ -264,13 +300,11 @@ void Player::update(float deltaTime, const sf::RenderWindow& window,
     if (attacking && swordTimer >= swordActiveDuration)
         attacking = false;
 
-    // INVULNERABILIDAD (parpadeo)
+    // INVULNERABILIDAD
     if (isInvulnerable) {
         invulnerableTimer += deltaTime;
-        if ((int)(invulnerableTimer * 8) % 2 == 0)
-            sprite.setColor(sf::Color(255,150,150));
-        else
-            sprite.setColor(sf::Color::White);
+        if ((int)(invulnerableTimer * 8) % 2 == 0) sprite.setColor(sf::Color(255,150,150));
+        else sprite.setColor(sf::Color::White);
 
         if (invulnerableTimer >= invulnerableDuration) {
             isInvulnerable = false;
@@ -279,8 +313,7 @@ void Player::update(float deltaTime, const sf::RenderWindow& window,
         }
     }
 
-    if (health == maxHealth)
-        canShootProjectile = true;
+    if (health == maxHealth) canShootProjectile = true;
 
     //------------------------------------------
     // PROYECTILES
@@ -288,62 +321,58 @@ void Player::update(float deltaTime, const sf::RenderWindow& window,
     for (size_t i = 0; i < projectiles.size();) {
         projectiles[i].update(deltaTime);
         auto pos = projectiles[i].getPosition();
-
         bool erase = false;
 
-        if (pos.x < 0 || pos.y < 0 ||
-            pos.x > window.getSize().x || pos.y > window.getSize().y) {
-
+        if (pos.x < 0 || pos.y < 0 || pos.x > window.getSize().x || pos.y > window.getSize().y) {
             erase = true;
         }
 
-        for (const auto& obs : obstacles)
-            if (!erase && projectiles[i].getBounds().intersects(obs.getBounds()))
+        // CORRECCIÓN: Los proyectiles ahora ignoran el agua y las plataformas
+        for (const auto& obs : obstacles) {
+            if (!erase && obs.isSolid() && projectiles[i].getBounds().intersects(obs.getBounds())) {
                 erase = true;
+            }
+        }
 
-        if (erase)
-            projectiles.erase(projectiles.begin() + i);
-        else
-            i++;
+        if (erase) projectiles.erase(projectiles.begin() + i);
+        else i++;
     }
 }
 
-void Player::render(sf::RenderWindow& window) {
-    if (textureLoaded) {
-        window.draw(sprite);
-    } else {
-        // draw the debug hitbox so player is visible
-        window.draw(shape);
-    }    for (auto &p : projectiles) p.render(window);
+void Player::render(sf::RenderTarget& window) {
+    if (textureLoaded) window.draw(sprite);
+    else window.draw(shape); 
     
-    if (attacking) {
-        window.draw(swordSprite);
-    }
+    for (auto &p : projectiles) p.render(window);
+    if (attacking) window.draw(swordSprite);
 }
 
 void Player::shoot() {
+
+    if (itemA != EquipItem::MAGICAL_SWORD) {
+        return; // Solo dispara si tiene la espada mágica equipada
+    }
+
     if (shootTimer >= shootCooldown && canShootProjectile && health == maxHealth) {
+        sf::Vector2f projDir = (direction != sf::Vector2f(0,0)) ? direction : lastDirection;
+        if (projDir == sf::Vector2f(0,0)) projDir = sf::Vector2f(0,-1);
 
-        sf::Vector2f projDir = (direction != sf::Vector2f(0,0))
-                               ? direction : lastDirection;
+        sf::Vector2f spawn = shape.getPosition() + projDir * (shape.getSize().x / 2.f + 4.f);
+        int dirInt = 0; 
+        if (projDir.y < 0) dirInt = 0;      
+        else if (projDir.y > 0) dirInt = 1; 
+        else if (projDir.x < 0) dirInt = 2; 
+        else if (projDir.x > 0) dirInt = 3; 
 
-        if (projDir == sf::Vector2f(0,0))
-            projDir = sf::Vector2f(0,-1);
-
-        sf::Vector2f spawn = shape.getPosition() +
-                            projDir * (shape.getSize().x / 2.f + 4.f);
-
-        projectiles.emplace_back(spawn.x, spawn.y, projDir, 420.f);
+        projectiles.emplace_back(spawn.x, spawn.y, dirInt);
         shootTimer = 0.f;
     }
 }
 
 void Player::takeDamage(int amount) {
     if (!canTakeDamage()) return;
-
     health -= amount;
     if (health < 0) health = 0;
-
     canShootProjectile = false;
     isInvulnerable = true;
     invulnerableTimer = 0;
@@ -355,20 +384,20 @@ void Player::heal(int amount) {
     if (health > maxHealth) health = maxHealth;
 }
 
-bool Player::canTakeDamage() const {
-    return !isInvulnerable;
-}
+bool Player::canTakeDamage() const { return !isInvulnerable; }
 
 void Player::applynockback(const sf::Vector2f& dir) {
     knockback = dir * 300.f;
     knockbackTimer = knockbackDuration;
 }
 
-bool Player::isAttacking() const {
-    return attacking;
-}
+bool Player::isAttacking() const { return attacking; }
 
 void Player::attack() {
+    // CANDADO 1: Si no tiene ninguna espada en la ranura A, no hace nada.
+    if (itemA != EquipItem::WOODEN_SWORD && itemA != EquipItem::MAGICAL_SWORD) {
+        return; 
+    }
     if (swordTimer < swordCooldown) return;
 
     swordTimer = 0.f;
@@ -377,40 +406,43 @@ void Player::attack() {
     sf::Vector2f offset = lastDirection * 32.f;
     float angulo = 0.f;
 
-    // Como el sprite mira hacia ARRIBA por defecto, los ángulos cambian:
-    if (lastDirection.y < 0.f) {        // ARRIBA
-        angulo = 0.f; 
-        offset = {0.f, lastDirection.y * (shape.getSize().y / 2.f + 12.f)};
-    } else if (lastDirection.x > 0.f) { // DERECHA
-        angulo = 90.f; 
-        offset = {lastDirection.x * (shape.getSize().x / 2.f + 12.f), 0.f};
-    } else if (lastDirection.y > 0.f) { // ABAJO
-        angulo = 180.f; 
-        offset = {0.f, lastDirection.y * (shape.getSize().y / 2.f + 12.f)};
-    } else if (lastDirection.x < 0.f) { // IZQUIERDA
-        angulo = -90.f; 
-        offset = {lastDirection.x * (shape.getSize().x / 2.f + 12.f), 0.f};
-    }
+    if (lastDirection.y < 0.f) { angulo = 0.f; offset = {0.f, lastDirection.y * (shape.getSize().y / 2.f + 12.f)}; } 
+    else if (lastDirection.x > 0.f) { angulo = 90.f; offset = {lastDirection.x * (shape.getSize().x / 2.f + 12.f), 0.f}; } 
+    else if (lastDirection.y > 0.f) { angulo = 180.f; offset = {0.f, lastDirection.y * (shape.getSize().y / 2.f + 12.f)}; } 
+    else if (lastDirection.x < 0.f) { angulo = -90.f; offset = {lastDirection.x * (shape.getSize().x / 2.f + 12.f), 0.f}; }
 
     swordSprite.setRotation(angulo);
 
-    // Ajustar hitbox invisible para que coincida con el sprite vertical u horizontal
     if (lastDirection.x != 0.f) swordHitbox.setSize({20.f, 10.f});
     else swordHitbox.setSize({10.f, 20.f});
 
-    // Mantenemos la hitbox física invisible para el daño
-    swordHitbox.setOrigin(swordHitbox.getSize() / 2.f);
-    
-    // Mantenemos la hitbox física invisible para el daño
     swordHitbox.setOrigin(swordHitbox.getSize() / 2.f);
     swordHitbox.setPosition(shape.getPosition() + offset);
     swordHitbox.move(lastDirection * 6.f);
-    
-    // Anclamos el dibujo de la espada sobre la hitbox
     swordSprite.setPosition(swordHitbox.getPosition());
+
+    // CANDADO 2: El proyectil mágico AHORA depende del arma y la vida
+    if (itemA == EquipItem::MAGICAL_SWORD && health == maxHealth) {
+        shoot(); // Dispara el rayo
+    }
 }
 
 sf::FloatRect Player::getSwordBounds() const {
     if (!attacking) return sf::FloatRect();
     return swordHitbox.getGlobalBounds();
+}
+
+bool Player::canBlock(const sf::FloatRect& projBounds) const {
+    // Si está atacando, el escudo se hace a un lado y queda vulnerable
+    if (attacking) return false; 
+
+    sf::FloatRect pBounds = shape.getGlobalBounds();
+
+    // Compara de qué lado está chocando el proyectil relativo hacia dónde mira Link
+    if (lastDirection.y < 0.f && projBounds.top + projBounds.height / 2.f < pBounds.top + pBounds.height / 2.f) return true; // Mirando Arriba
+    if (lastDirection.y > 0.f && projBounds.top + projBounds.height / 2.f > pBounds.top + pBounds.height / 2.f) return true; // Mirando Abajo
+    if (lastDirection.x < 0.f && projBounds.left + projBounds.width / 2.f < pBounds.left + pBounds.width / 2.f) return true; // Mirando Izquierda
+    if (lastDirection.x > 0.f && projBounds.left + projBounds.width / 2.f > pBounds.left + pBounds.width / 2.f) return true; // Mirando Derecha
+
+    return false;
 }

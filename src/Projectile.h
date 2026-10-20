@@ -5,15 +5,24 @@
 
 class Projectile {
 private:
-    sf::RectangleShape shape;
-    sf::Vector2f direction;
-    float speed; // pixels per second
+    sf::Vector2f position;
+    sf::Vector2f velocity;
+    float speed; // pixeles por segundo
+
+    // --- Gráficos de la Espada ---
+    sf::Texture texture;
+    sf::Sprite sprite;
+    bool textureLoaded;
+    int direction; // 0=Arriba, 1=Abajo, 2=Izquierda, 3=Derecha
+    
 public:
-    Projectile(float startX = 0.f, float startY = 0.f, const sf::Vector2f& dir = sf::Vector2f(0.f, -1.f), float spd = 400.f);
+    // Actualizamos el constructor para recibir el entero de la dirección
+    Projectile(float startX, float startY, int dir);
+    
     void update(float deltaTime);
-    void render(sf::RenderWindow& window) const;
+    void render(sf::RenderTarget& window);
     sf::FloatRect getBounds() const;
-    sf::Vector2f getPosition() const { return shape.getPosition(); }
+    sf::Vector2f getPosition() const { return position; }
 };
 
 #endif
